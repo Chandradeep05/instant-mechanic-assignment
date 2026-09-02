@@ -1,0 +1,79 @@
+version: '3.8'
+
+# ============================================================
+# Instant Mechanic LiveOps — Docker Compose (Local Dev Stack)
+# ============================================================
+# WARNING: This compose file is for LOCAL DEVELOPMENT only.
+# Do NOT use it with the hardcoded secret key in production.
+#
+# First-time setup:
+#   docker compose up --build
+#   docker compose exec backend python manage.py seed_data
+#
+# Subsequent runs (data preserved):
+#   docker compose up
+#
+# To fully reset demo data:
+#   docker compose exec backend python manage.py seed_data --reset
+# ============================================================
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: liveops_postgres
+    environment:
+      POSTGRES_DB: instant_mechanic
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d instant_mechanic"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: liveops_backend
+    # seed_data is intentionally NOT in the startup command.
+    # Run it manually once: docker compose exec backend python manage.py seed_data
+    command: >
+      sh -c "python manage.py migrate &&
+             daphne -b 0.0.0.0 -p 8000 core.asgi:application"
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgres://postgres:postgrespassword@postgres:5432/instant_mechanic
+      - DEBUG=True
+      # IMPORTANT: Replace this key before any public deployment.
+      - DJANGO_SECRET_KEY=dev-only-docker-compose-secret-key-replace-before-deploying
+      - ALLOWED_HOSTS=localhost,127.0.0.1
+      - CORS_ALLOWED_ORIGINS=http://localhost:5173
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # VITE_* vars must be passed as build ARGs (baked in at build time, not runtime)
+        VITE_API_URL: http://localhost:8000/api/v1
+        VITE_WS_URL: ws://localhost:8000/ws/operations/
+    container_name: liveops_frontend
+    ports:
+      # FIXED: Nginx inside the container serves on port 80, map to host 5173
+      - "5173:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
