@@ -24,6 +24,10 @@ export function useLiveOpsSocket(options: LiveOpsSocketOptions = {}) {
   // a new socket has already been created, preventing duplicate connections.
   const generationRef = useRef(0);
 
+  // Track whether the socket has connected previously so that initial connection
+  // does not fire socket.reconnected and duplicate the mount REST fetch.
+  const hasConnectedRef = useRef(false);
+
   const onEventRef = useRef(onEvent);
   useEffect(() => {
     onEventRef.current = onEvent;
@@ -56,9 +60,12 @@ export function useLiveOpsSocket(options: LiveOpsSocketOptions = {}) {
         if (generationRef.current !== thisGeneration) return;
         setConnectionState('LIVE');
         retryCountRef.current = 0;
-        if (onEventRef.current) {
+        // Only trigger socket.reconnected when reconnecting after a prior connection,
+        // avoiding redundant fetches on initial application mount.
+        if (hasConnectedRef.current && onEventRef.current) {
           onEventRef.current('socket.reconnected', { timestamp: Date.now() });
         }
+        hasConnectedRef.current = true;
       };
 
       ws.onmessage = (event) => {

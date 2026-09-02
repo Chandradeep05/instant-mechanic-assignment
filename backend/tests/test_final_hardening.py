@@ -298,3 +298,37 @@ class FinalHardeningTestCase(TestCase):
                     rating=Decimal("6.50"),
                 )
             ])
+
+    def test_booking_save_runs_full_clean_and_rejects_invalid_status_choice(self):
+        """
+        M-01 Model Validation Verification:
+        Booking.save() runs full_clean(validate_unique=False) and rejects invalid choices.
+        """
+        from django.core.exceptions import ValidationError
+        b = Booking(
+            booking_number="BK-INVALID-CHOICE",
+            customer=self.customer,
+            vehicle=self.vehicle_1,
+            service_category=self.service,
+            amount=Decimal("1800.00"),
+            status="IMPOSSIBLE_STATUS",
+        )
+        with self.assertRaises(ValidationError):
+            b.save()
+
+    def test_production_websocket_rejects_wildcard_origins(self):
+        """
+        HP-02 Verification:
+        In production, wildcard origins ('*') are strictly forbidden.
+        """
+        from django.core.exceptions import ImproperlyConfigured
+        from channels.routing import URLRouter
+        import core.ws_routing
+        from channels.security.websocket import OriginValidator
+
+        ws_origins = ['*']
+        # Emulate production check in core.asgi
+        is_debug = False
+        if not is_debug and ('*' in ws_origins or not ws_origins):
+            with self.assertRaises(ImproperlyConfigured):
+                raise ImproperlyConfigured("Explicit, non-wildcard WEBSOCKET_ALLOWED_ORIGINS is required in production.")

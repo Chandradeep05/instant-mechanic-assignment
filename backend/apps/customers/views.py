@@ -1,3 +1,4 @@
+from decimal import Decimal
 from rest_framework import generics, filters
 from django.db.models import Count, Sum, Subquery, OuterRef, DecimalField
 from django.db.models.functions import Coalesce
@@ -38,9 +39,8 @@ class CustomerListView(generics.ListAPIView):
             total_bookings=Count('bookings', distinct=True),
             lifetime_value=Coalesce(
                 completed_bookings_sum,
-                0.0,
+                Decimal('0.00'),
                 output_field=DecimalField(max_digits=12, decimal_places=2)
             ),
             last_booking_date=last_booking_date_subquery
         ).prefetch_related('vehicles')
-
