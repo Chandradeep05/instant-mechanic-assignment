@@ -101,6 +101,17 @@ export const api = {
     return res.data;
   },
 
+  createBooking: async (data: {
+    customer: number;
+    vehicle: number;
+    service_category: number;
+    amount?: number;
+    booking_number?: string;
+  }): Promise<BookingDetail> => {
+    const res = await apiClient.post<BookingDetail>('/bookings/', data);
+    return res.data;
+  },
+
   // Mechanics & Customers & Services
   getMechanics: async (params?: { search?: string; ordering?: string; page?: number; page_size?: number }): Promise<PaginatedResponse<Mechanic> | Mechanic[]> => {
     const res = await apiClient.get('/mechanics/', { params });

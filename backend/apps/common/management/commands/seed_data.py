@@ -28,12 +28,24 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         from apps.bookings.models import Booking
+        from apps.customers.models import Customer
+        from apps.mechanics.models import Mechanic
+        from apps.bookings.models import ServiceCategory
+
         reset = options.get('reset', False)
 
-        if not reset and Booking.objects.exists():
+        has_existing_data = (
+            Booking.objects.exists() or
+            Customer.objects.exists() or
+            Mechanic.objects.exists() or
+            ServiceCategory.objects.exists()
+        )
+
+        if not reset and has_existing_data:
             self.stdout.write(
                 self.style.WARNING(
-                    f"Database already contains {Booking.objects.count()} bookings. "
+                    f"Database already contains seeded data ({Booking.objects.count()} bookings, "
+                    f"{Customer.objects.count()} customers, {Mechanic.objects.count()} mechanics). "
                     "Skipping seed to preserve existing data.\n"
                     "Run with --reset to wipe and reseed: python manage.py seed_data --reset"
                 )
@@ -81,7 +93,7 @@ class Command(BaseCommand):
         ]
         services = []
         for name, desc, price in services_data:
-            s = ServiceCategory.objects.create(name=name, description=desc, base_price=price)
+            s, _ = ServiceCategory.objects.get_or_create(name=name, defaults={"description": desc, "base_price": price})
             services.append(s)
         self.stdout.write(f"Created {len(services)} service categories.")
         return services

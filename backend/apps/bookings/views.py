@@ -9,6 +9,7 @@ from .services import BookingService
 from .serializers import (
     BookingListSerializer,
     BookingDetailSerializer,
+    BookingCreateSerializer,
     StatusTransitionRequestSerializer,
     AssignMechanicRequestSerializer,
     ServiceCategorySerializer,
@@ -20,17 +21,17 @@ VALID_BOOKING_STATUSES = {s[0] for s in Booking.STATUS_CHOICES}
 
 @extend_schema(
     tags=['Bookings'],
-    summary="List bookings with search, filters, sorting, and pagination",
+    summary="List bookings with filters or create a new booking",
     parameters=[
         OpenApiParameter(name='status', description='Filter by status', required=False, type=str),
         OpenApiParameter(name='service_category', description='Filter by service category ID', required=False, type=int),
         OpenApiParameter(name='mechanic', description='Filter by mechanic ID', required=False, type=int),
         OpenApiParameter(name='search', description='Search booking number, customer, vehicle, mechanic', required=False, type=str),
         OpenApiParameter(name='ordering', description='Ordering fields: created_at, -created_at, amount, -amount', required=False, type=str),
-    ]
+    ],
+    responses={200: BookingListSerializer, 201: BookingDetailSerializer}
 )
-class BookingListView(generics.ListAPIView):
-    serializer_class = BookingListSerializer
+class BookingListView(generics.ListCreateAPIView):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = [
         'booking_number',
@@ -43,6 +44,20 @@ class BookingListView(generics.ListAPIView):
     ]
     ordering_fields = ['created_at', 'amount', 'status']
     ordering = ['-created_at']
+
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return BookingCreateSerializer
+        return BookingListSerializer
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        instance = serializer.save()
+        return Response(
+            BookingDetailSerializer(instance).data,
+            status=status.HTTP_201_CREATED
+        )
 
     def list(self, request, *args, **kwargs):
         """Override list to validate filter params before executing the query."""

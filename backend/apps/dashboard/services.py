@@ -86,7 +86,7 @@ class DashboardService:
                 "entity_id": b.id,
                 "booking_number": b.booking_number,
                 "title": f"Delayed arrival: ETA exceeded by {overdue_mins}m",
-                "details": f"Mechanic {b.mechanic.name if b.mechanic else 'Unknown'} was expected at {b.estimated_arrival_at.strftime('%H:%M')} IST.",
+                "details": f"Mechanic {b.mechanic.name if b.mechanic else 'Unknown'} was expected at {timezone.localtime(b.estimated_arrival_at).strftime('%H:%M')} IST.",
                 "created_at": (b.started_at or b.created_at).isoformat(),
                 "action_type": "VIEW_BOOKING",
             })
@@ -268,7 +268,7 @@ class DashboardService:
         else:
             days = 30 if range_param == "30d" else 7
             local_today = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
-            start_time = local_today - timedelta(days=days)
+            start_time = local_today - timedelta(days=days - 1)
             buckets = {}
             for i in range(days - 1, -1, -1):
                 d_time = local_today - timedelta(days=i)
@@ -300,7 +300,7 @@ class DashboardService:
         local_now = timezone.localtime(now)
         days = 30 if range_param == "30d" else 7
         local_today = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
-        start_time = local_today - timedelta(days=days)
+        start_time = local_today - timedelta(days=days - 1)
 
         buckets = {}
         for i in range(days - 1, -1, -1):

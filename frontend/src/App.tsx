@@ -25,6 +25,26 @@ export function App() {
   const [isSimulating, setIsSimulating] = useState(false);
   const [isSimulatingAction, setIsSimulatingAction] = useState(false);
   const [liveNotification, setLiveNotification] = useState<{ title: string; subtitle: string } | null>(null);
+  const notificationTimeoutRef = useRef<number | null>(null);
+
+  const showNotification = useCallback((notification: { title: string; subtitle: string }, duration = 4500) => {
+    if (notificationTimeoutRef.current) {
+      window.clearTimeout(notificationTimeoutRef.current);
+    }
+    setLiveNotification(notification);
+    notificationTimeoutRef.current = window.setTimeout(() => {
+      setLiveNotification(null);
+      notificationTimeoutRef.current = null;
+    }, duration);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (notificationTimeoutRef.current) {
+        window.clearTimeout(notificationTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Guard against overlapping simulateDemoActivity() calls from both
   // the auto-interval and the manual button.
@@ -51,17 +71,16 @@ export function App() {
     fetchOverviewData();
     setRefreshTrigger((prev) => prev + 1);
 
-    if (event === 'booking.updated' || event === 'booking.assigned') {
+    if (event === 'booking.updated' || event === 'booking.assigned' || event === 'booking.created') {
       const bNum = data.booking_number || 'Booking';
       const status = data.status || 'Updated';
       const mech = data.mechanic_name ? ` • Assigned to ${data.mechanic_name}` : '';
-      setLiveNotification({
-        title: `Real-Time Update: ${bNum}`,
-        subtitle: `Status changed to ${status}${mech}`,
-      });
-      setTimeout(() => setLiveNotification(null), 4500);
+      showNotification({
+        title: event === 'booking.created' ? `New Booking: ${bNum}` : `Real-Time Update: ${bNum}`,
+        subtitle: `Status: ${status}${mech}`,
+      }, 4500);
     }
-  }, [fetchOverviewData]);
+  }, [fetchOverviewData, showNotification]);
 
   const { connectionState } = useLiveOpsSocket({
     onEvent: handleLiveEvent,
@@ -103,11 +122,10 @@ export function App() {
       simulationInFlight.current = true;
       setIsSimulatingAction(true);
       const res = await api.simulateDemoActivity();
-      setLiveNotification({
+      showNotification({
         title: 'Simulation Triggered',
         subtitle: res.message,
-      });
-      setTimeout(() => setLiveNotification(null), 4000);
+      }, 4000);
     } catch (err: any) {
       console.error('Simulate manual event error:', err);
     } finally {

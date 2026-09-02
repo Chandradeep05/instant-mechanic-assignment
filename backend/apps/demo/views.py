@@ -13,89 +13,106 @@ from decimal import Decimal
 import random
 
 
+from django.db import transaction
+from django.db.models import Count, Q
+
 @extend_schema(tags=['Demo'], summary="Simulate advancing one eligible booking in the demo pool")
 class DemoSimulateView(APIView):
     def post(self, request):
-        # Eligible: non-scenario bookings in any active state
-        eligible_qs = Booking.objects.filter(
-            is_demo_scenario=False,
-            status__in=[
-                Booking.STATUS_PENDING,
-                Booking.STATUS_ASSIGNED,
-                Booking.STATUS_ON_THE_WAY,
-                Booking.STATUS_ARRIVED,
-                Booking.STATUS_IN_PROGRESS,
-            ]
-        ).select_related('customer', 'vehicle', 'mechanic', 'service_category').order_by('created_at')
+        with transaction.atomic():
+            # Acquire row lock without nullable outer join (prevents PostgreSQL FOR UPDATE error)
+            # and use skip_locked=True so concurrent simulator requests select different bookings.
+            booking = (
+                Booking.objects
+                .select_for_update(skip_locked=True)
+                .filter(
+                    is_demo_scenario=False,
+                    status__in=[
+                        Booking.STATUS_PENDING,
+                        Booking.STATUS_ASSIGNED,
+                        Booking.STATUS_ON_THE_WAY,
+                        Booking.STATUS_ARRIVED,
+                        Booking.STATUS_IN_PROGRESS,
+                    ]
+                )
+                .order_by('created_at')
+                .first()
+            )
 
-        booking = eligible_qs.first()
-
-        # If all active bookings are exhausted, create a NEW demo booking instead of
-        # mutating COMPLETED -> PENDING (which bypasses the state machine).
-        if not booking:
-            booking = _create_fresh_demo_booking()
+            # If all active bookings are exhausted, create a NEW demo booking instead of
+            # mutating COMPLETED -> PENDING (which bypasses the state machine).
             if not booking:
+                booking = _create_fresh_demo_booking()
+                if not booking:
+                    return Response(
+                        {"message": "No demo data available. Run seed_data first: python manage.py seed_data"},
+                        status=status.HTTP_200_OK
+                    )
+                # Re-select row with lock in this transaction
+                booking = Booking.objects.select_for_update().get(id=booking.id)
+
+            # Populate FK fields via separate non-locking fetch for downstream logic
+            booking = Booking.objects.select_related(
+                'customer', 'vehicle', 'mechanic', 'service_category'
+            ).get(id=booking.id)
+
+            current_status = booking.status
+            next_status_map = {
+                Booking.STATUS_PENDING: Booking.STATUS_ASSIGNED,
+                Booking.STATUS_ASSIGNED: Booking.STATUS_ON_THE_WAY,
+                Booking.STATUS_ON_THE_WAY: Booking.STATUS_ARRIVED,
+                Booking.STATUS_ARRIVED: Booking.STATUS_IN_PROGRESS,
+                Booking.STATUS_IN_PROGRESS: Booking.STATUS_COMPLETED,
+            }
+            target_status = next_status_map.get(current_status)
+
+            if not target_status:
                 return Response(
-                    {"message": "No demo data available. Run seed_data first: python manage.py seed_data"},
-                    status=status.HTTP_200_OK
+                    {"message": f"Booking is in unrecognized state '{current_status}'."},
+                    status=status.HTTP_400_BAD_REQUEST
                 )
 
-        current_status = booking.status
-        next_status_map = {
-            Booking.STATUS_PENDING: Booking.STATUS_ASSIGNED,
-            Booking.STATUS_ASSIGNED: Booking.STATUS_ON_THE_WAY,
-            Booking.STATUS_ON_THE_WAY: Booking.STATUS_ARRIVED,
-            Booking.STATUS_ARRIVED: Booking.STATUS_IN_PROGRESS,
-            Booking.STATUS_IN_PROGRESS: Booking.STATUS_COMPLETED,
-        }
-        target_status = next_status_map.get(current_status)
-
-        if not target_status:
-            return Response(
-                {"message": f"Booking is in unrecognized state '{current_status}'."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # PENDING -> ASSIGNED always requires a mechanic via assign_mechanic()
-        # We NEVER call transition_booking() directly for PENDING -> ASSIGNED.
-        # Domain invariant: ASSIGNED implies mechanic IS NOT NULL.
-        if current_status == Booking.STATUS_PENDING:
-            from django.db.models import Count, Q
-            active_statuses = [
-                Booking.STATUS_ASSIGNED,
-                Booking.STATUS_ON_THE_WAY,
-                Booking.STATUS_ARRIVED,
-                Booking.STATUS_IN_PROGRESS,
-            ]
-            available_mechanic = (
-                Mechanic.objects.filter(
-                    availability_status=Mechanic.AVAILABILITY_AVAILABLE
-                ).annotate(
-                    active_job_count=Count('bookings', filter=Q(bookings__status__in=active_statuses))
-                ).filter(active_job_count__lt=4).order_by('active_job_count', 'id').first()
-            )
-            if not available_mechanic:
-                return Response(
-                    {
-                        "message": "Cannot advance booking: no AVAILABLE mechanic with capacity found. "
-                                   "All available mechanics have reached max concurrent jobs (4) or are OFFLINE/BREAK."
-                    },
-                    status=status.HTTP_200_OK
+            # PENDING -> ASSIGNED always requires a mechanic via assign_mechanic()
+            # We NEVER call transition_booking() directly for PENDING -> ASSIGNED.
+            # Domain invariant: ASSIGNED implies mechanic IS NOT NULL.
+            if current_status == Booking.STATUS_PENDING:
+                active_statuses = [
+                    Booking.STATUS_ASSIGNED,
+                    Booking.STATUS_ON_THE_WAY,
+                    Booking.STATUS_ARRIVED,
+                    Booking.STATUS_IN_PROGRESS,
+                ]
+                available_mechanic = (
+                    Mechanic.objects.filter(
+                        availability_status=Mechanic.AVAILABILITY_AVAILABLE
+                    ).annotate(
+                        active_job_count=Count('bookings', filter=Q(bookings__status__in=active_statuses))
+                    ).filter(active_job_count__lt=4).order_by('active_job_count', 'id').first()
                 )
+                if not available_mechanic:
+                    return Response(
+                        {
+                            "message": "Cannot advance booking: no AVAILABLE mechanic with capacity found. "
+                                       "All available mechanics have reached max concurrent jobs (4) or are OFFLINE/BREAK."
+                        },
+                        status=status.HTTP_200_OK
+                    )
 
-            booking = BookingService.assign_mechanic(
-                booking=booking,
-                mechanic=available_mechanic,
-                changed_by='SIMULATOR',
-                notes='Auto-assigned by LiveOps Simulator'
-            )
-        else:
-            booking = BookingService.transition_booking(
-                booking=booking,
-                new_status=target_status,
-                changed_by='SIMULATOR',
-                notes=f'Simulated progression {current_status} → {target_status}'
-            )
+                booking = BookingService.assign_mechanic(
+                    booking=booking,
+                    mechanic=available_mechanic,
+                    changed_by='SIMULATOR',
+                    notes='Auto-assigned by LiveOps Simulator',
+                    already_locked=True
+                )
+            else:
+                booking = BookingService.transition_booking(
+                    booking=booking,
+                    new_status=target_status,
+                    changed_by='SIMULATOR',
+                    notes=f'Simulated progression {current_status} → {target_status}',
+                    already_locked=True
+                )
 
         return Response({
             "message": f"Advanced booking {booking.booking_number}: {current_status} → {booking.status}.",

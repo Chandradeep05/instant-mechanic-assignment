@@ -80,7 +80,7 @@ def get_booking_event_payload(booking: Booking) -> dict:
 
 class BookingService:
     @staticmethod
-    def transition_booking(booking: Booking, new_status: str, changed_by: str = 'OPERATOR', notes: str = '') -> Booking:
+    def transition_booking(booking: Booking, new_status: str, changed_by: str = 'OPERATOR', notes: str = '', already_locked: bool = False) -> Booking:
         """
         Executes a validated status transition inside an atomic transaction with row locking.
 
@@ -91,16 +91,19 @@ class BookingService:
         now = timezone.now()
 
         with transaction.atomic():
-            # Acquire row lock to prevent concurrent transition race conditions.
-            # select_related is intentionally excluded: PostgreSQL raises
-            # "FOR UPDATE cannot be applied to the nullable side of an outer join"
-            # when mechanic (nullable FK) is included in select_for_update().
-            locked_booking = Booking.objects.select_for_update().get(id=booking.id)
-            # Populate FK fields via a separate non-locking fetch so the rest of
-            # the method can access booking.customer, booking.mechanic, etc.
-            locked_booking = Booking.objects.select_related(
-                'customer', 'vehicle', 'mechanic', 'service_category'
-            ).get(id=locked_booking.id)
+            if not already_locked:
+                # Acquire row lock to prevent concurrent transition race conditions.
+                # select_related is intentionally excluded: PostgreSQL raises
+                # "FOR UPDATE cannot be applied to the nullable side of an outer join"
+                # when mechanic (nullable FK) is included in select_for_update().
+                locked_booking = Booking.objects.select_for_update().get(id=booking.id)
+                # Populate FK fields via a separate non-locking fetch so the rest of
+                # the method can access booking.customer, booking.mechanic, etc.
+                locked_booking = Booking.objects.select_related(
+                    'customer', 'vehicle', 'mechanic', 'service_category'
+                ).get(id=locked_booking.id)
+            else:
+                locked_booking = booking
 
             allowed = ALLOWED_TRANSITIONS.get(locked_booking.status, [])
             if new_status not in allowed:
@@ -157,7 +160,7 @@ class BookingService:
         return locked_booking
 
     @staticmethod
-    def assign_mechanic(booking: Booking, mechanic: Mechanic, changed_by: str = 'OPERATOR', notes: str = '') -> Booking:
+    def assign_mechanic(booking: Booking, mechanic: Mechanic, changed_by: str = 'OPERATOR', notes: str = '', already_locked: bool = False) -> Booking:
         """
         Assigns or reassigns a mechanic to a booking. Only allowed for PENDING or ASSIGNED bookings.
         Reassignment after travel has begun (ON_THE_WAY+) is rejected to preserve domain integrity.
@@ -170,11 +173,14 @@ class BookingService:
         now = timezone.now()
 
         with transaction.atomic():
-            # Lock the booking row only — same reason as transition_booking.
-            locked_booking = Booking.objects.select_for_update().get(id=booking.id)
-            locked_booking = Booking.objects.select_related(
-                'customer', 'vehicle', 'mechanic', 'service_category'
-            ).get(id=locked_booking.id)
+            if not already_locked:
+                # Lock the booking row only — same reason as transition_booking.
+                locked_booking = Booking.objects.select_for_update().get(id=booking.id)
+                locked_booking = Booking.objects.select_related(
+                    'customer', 'vehicle', 'mechanic', 'service_category'
+                ).get(id=locked_booking.id)
+            else:
+                locked_booking = booking
 
             # Terminal states reject assignment
             if locked_booking.status in [Booking.STATUS_COMPLETED, Booking.STATUS_CANCELLED]:

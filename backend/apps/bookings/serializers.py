@@ -64,3 +64,94 @@ class StatusTransitionRequestSerializer(serializers.Serializer):
 class AssignMechanicRequestSerializer(serializers.Serializer):
     mechanic_id = serializers.IntegerField()
     notes = serializers.CharField(required=False, allow_blank=True, default='')
+
+
+FORBIDDEN_CREATE_FIELDS = {
+    "status",
+    "mechanic",
+    "assigned_at",
+    "started_at",
+    "estimated_arrival_at",
+    "arrived_at",
+    "completed_at",
+    "cancelled_at",
+}
+
+
+class BookingCreateSerializer(serializers.ModelSerializer):
+    booking_number = serializers.CharField(required=False, allow_blank=True)
+    amount = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+
+    class Meta:
+        model = Booking
+        fields = [
+            'booking_number',
+            'customer',
+            'vehicle',
+            'service_category',
+            'amount',
+        ]
+
+    def validate(self, attrs):
+        # 1. Explicitly reject forbidden mutation fields during creation
+        forbidden = FORBIDDEN_CREATE_FIELDS.intersection(self.initial_data.keys())
+        if forbidden:
+            raise serializers.ValidationError(
+                {field: f"Field '{field}' cannot be set during booking creation. Use domain service endpoints." for field in sorted(forbidden)}
+            )
+
+        # 2. Enforce customer-vehicle ownership invariant
+        customer = attrs['customer']
+        vehicle = attrs['vehicle']
+        if vehicle.customer_id != customer.id:
+            raise serializers.ValidationError({
+                "vehicle": f"Vehicle '{vehicle.registration_number}' does not belong to customer '{customer.name}'."
+            })
+
+        return attrs
+
+    def create(self, validated_data):
+        import uuid
+        from django.utils import timezone
+        from django.db import transaction
+        from .services import publish_booking_event, get_booking_event_payload
+
+        service = validated_data['service_category']
+        amount = validated_data.get('amount')
+        if amount is None:
+            amount = service.base_price
+
+        booking_number = validated_data.get('booking_number')
+        with transaction.atomic():
+            if not booking_number:
+                # Generate unique booking number with collision retry
+                for _ in range(5):
+                    candidate = f"BK-{timezone.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
+                    if not Booking.objects.filter(booking_number=candidate).exists():
+                        booking_number = candidate
+                        break
+                if not booking_number:
+                    booking_number = f"BK-{timezone.now().strftime('%Y%m%d')}-{uuid.uuid4().hex[:8].upper()}"
+
+            booking = Booking.objects.create(
+                booking_number=booking_number,
+                customer=validated_data['customer'],
+                vehicle=validated_data['vehicle'],
+                service_category=service,
+                amount=amount,
+                status=Booking.STATUS_PENDING,
+                mechanic=None,
+            )
+
+            BookingStatusHistory.objects.create(
+                booking=booking,
+                previous_status='CREATED',
+                new_status=Booking.STATUS_PENDING,
+                changed_by='OPERATOR',
+                notes='Initial booking creation'
+            )
+
+            payload = get_booking_event_payload(booking)
+            transaction.on_commit(lambda: publish_booking_event("booking.created", payload))
+
+        return booking

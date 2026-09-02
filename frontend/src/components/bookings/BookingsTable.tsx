@@ -9,6 +9,7 @@ import {
   Eye,
   UserCheck,
   RotateCcw,
+  Plus,
 } from 'lucide-react';
 import { api } from '../../api/client';
 import { BookingListItem, BookingStatus, ServiceCategory, PaginatedResponse } from '../../types';
@@ -16,6 +17,7 @@ import { StatusBadge } from '../ui/Badge';
 import { TableSkeleton } from '../ui/LoadingSkeleton';
 import { ErrorState } from '../ui/ErrorState';
 import { EmptyState } from '../ui/EmptyState';
+import { CreateBookingModal } from './CreateBookingModal';
 
 interface BookingsTableProps {
   initialStatusFilter?: string;
@@ -41,6 +43,7 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({
   const [services, setServices] = useState<ServiceCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   useEffect(() => {
     if (initialStatusFilter !== undefined) {
@@ -141,14 +144,23 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({
           </p>
         </div>
 
-        <button
-          onClick={handleExportCSV}
-          disabled={loading || bookings.length === 0}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-surface-light hover:bg-surface-lighter text-slate-200 border border-surface-border transition-colors disabled:opacity-50 self-start sm:self-auto"
-        >
-          <Download className="w-3.5 h-3.5" />
-          Export CSV
-        </button>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <button
+            onClick={() => setIsCreateModalOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-orange-500 hover:bg-orange-600 text-white transition-colors shadow-sm shadow-orange-500/20"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            New Booking
+          </button>
+          <button
+            onClick={handleExportCSV}
+            disabled={loading || bookings.length === 0}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-surface-light hover:bg-surface-lighter text-slate-200 border border-surface-border transition-colors disabled:opacity-50"
+          >
+            <Download className="w-3.5 h-3.5" />
+            Export CSV
+          </button>
+        </div>
       </div>
 
       {/* Filter Toolbar */}
@@ -357,6 +369,16 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({
           </div>
         </div>
       )}
+
+      {/* New Booking Creation Modal */}
+      <CreateBookingModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onBookingCreated={(newBooking) => {
+          fetchBookings();
+          onSelectBooking(newBooking.id);
+        }}
+      />
     </div>
   );
 };

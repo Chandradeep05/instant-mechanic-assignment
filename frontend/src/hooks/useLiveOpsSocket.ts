@@ -140,7 +140,7 @@ export function useLiveOpsSocket(options: LiveOpsSocketOptions = {}) {
     };
   }, [connect]);
 
-  // Handle polling fallback
+  // Handle polling fallback and periodic WebSocket recovery
   useEffect(() => {
     if (connectionState === 'POLLING_FALLBACK') {
       const pollTimer = window.setInterval(() => {
@@ -149,9 +149,19 @@ export function useLiveOpsSocket(options: LiveOpsSocketOptions = {}) {
         }
       }, pollingIntervalMs);
 
-      return () => window.clearInterval(pollTimer);
+      // Periodically attempt to recover WebSocket connection (every 30 seconds).
+      // When connection opens, ws.onopen automatically transitions connectionState to 'LIVE'.
+      const recoveryTimer = window.setInterval(() => {
+        retryCountRef.current = 0;
+        connect();
+      }, 30000);
+
+      return () => {
+        window.clearInterval(pollTimer);
+        window.clearInterval(recoveryTimer);
+      };
     }
-  }, [connectionState, pollingIntervalMs]);
+  }, [connectionState, pollingIntervalMs, connect]);
 
   const reconnect = useCallback(() => {
     // Close existing socket and invalidate its generation before reconnecting.

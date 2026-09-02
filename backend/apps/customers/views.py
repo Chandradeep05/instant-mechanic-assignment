@@ -1,9 +1,10 @@
 from rest_framework import generics, filters
-from django.db.models import Count, Sum, Max, Q, DecimalField
+from django.db.models import Count, Sum, Subquery, OuterRef, DecimalField
 from django.db.models.functions import Coalesce
 from drf_spectacular.utils import extend_schema
 from .models import Customer
 from .serializers import CustomerSerializer
+from apps.bookings.models import Booking
 
 @extend_schema(tags=['Customers'], summary="List customers with lifetime metrics")
 class CustomerListView(generics.ListAPIView):
@@ -14,13 +15,32 @@ class CustomerListView(generics.ListAPIView):
     ordering = ['-created_at']
 
     def get_queryset(self):
+        # Correlated Subquery for completed bookings sum:
+        # Prevents Cartesian join multiplication when a customer has multiple vehicles.
+        completed_bookings_sum = Subquery(
+            Booking.objects.filter(
+                customer=OuterRef('pk'),
+                status=Booking.STATUS_COMPLETED
+            ).values('customer').annotate(
+                total=Sum('amount')
+            ).values('total')[:1],
+            output_field=DecimalField(max_digits=12, decimal_places=2)
+        )
+
+        last_booking_date_subquery = Subquery(
+            Booking.objects.filter(
+                customer=OuterRef('pk')
+            ).order_by('-created_at').values('created_at')[:1]
+        )
+
         return Customer.objects.annotate(
             vehicle_count=Count('vehicles', distinct=True),
             total_bookings=Count('bookings', distinct=True),
             lifetime_value=Coalesce(
-                Sum('bookings__amount', filter=Q(bookings__status='COMPLETED')),
+                completed_bookings_sum,
                 0.0,
                 output_field=DecimalField(max_digits=12, decimal_places=2)
             ),
-            last_booking_date=Max('bookings__created_at')
+            last_booking_date=last_booking_date_subquery
         ).prefetch_related('vehicles')
+
