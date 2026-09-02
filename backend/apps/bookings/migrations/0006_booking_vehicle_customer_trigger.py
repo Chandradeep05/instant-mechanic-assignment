@@ -41,7 +41,7 @@ def revert_trigger_if_postgres(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ('bookings', '0003_booking_completed_requires_completed_at_and_more'),
+        ('bookings', '0005_remove_booking_version'),
     ]
 
     operations = [

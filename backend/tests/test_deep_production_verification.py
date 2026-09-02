@@ -454,6 +454,31 @@ class DeepProductionVerificationTestCase(TestCase):
         unauthorized_matched = any(re.match(pattern, unauthorized) for pattern in patterns)
         self.assertFalse(unauthorized_matched, f"CORS regex improperly matched {unauthorized}")
 
+    def test_cors_rejects_other_vercel_and_render_projects(self):
+        """
+        RB-NEW-01 Hostile Verification:
+        CORS must reject arbitrary third-party projects hosted on the same provider
+        (Vercel or Render). Only instant-mechanic-assignment domains are accepted.
+        """
+        patterns = getattr(settings, 'CORS_ALLOWED_ORIGIN_REGEXES', [])
+        allowed_origins = getattr(settings, 'CORS_ALLOWED_ORIGINS', [])
+
+        def is_origin_allowed(origin):
+            if origin in allowed_origins:
+                return True
+            return any(re.match(pattern, origin) for pattern in patterns)
+
+        # Hostile tests in the same provider namespaces must be REJECTED
+        self.assertFalse(is_origin_allowed("https://attacker-project.vercel.app"))
+        self.assertFalse(is_origin_allowed("https://another-student-assignment.vercel.app"))
+        self.assertFalse(is_origin_allowed("https://random-attacker.onrender.com"))
+        self.assertFalse(is_origin_allowed("https://evil-host.onrender.com"))
+
+        # Valid project origins must be ACCEPTED
+        self.assertTrue(is_origin_allowed("https://instant-mechanic-assignment-ten.vercel.app"))
+        self.assertTrue(is_origin_allowed("https://instant-mechanic-assignment.vercel.app"))
+        self.assertTrue(is_origin_allowed("https://instant-mechanic-assignment-staging-42.vercel.app"))
+
     # =========================================================================
     # 7. DEMO SIMULATOR STEPWISE PROGRESSION
     # =========================================================================

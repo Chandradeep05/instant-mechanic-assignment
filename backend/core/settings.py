@@ -222,8 +222,7 @@ SPECTACULAR_SETTINGS = {
 # --- CORS ---
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGIN_REGEXES = [
-    r"^https:\/\/.*\.vercel\.app$",
-    r"^https:\/\/.*\.onrender\.com$",
+    r"^https:\/\/instant-mechanic-assignment(-[a-z0-9-]+)?\.vercel\.app$",
     r"^http:\/\/localhost:\d+$",
     r"^http:\/\/127\.0.0\.1:\d+$",
 ]
@@ -254,8 +253,6 @@ if _ws_origins_env.strip():
     ]
 elif not DEBUG:
     WEBSOCKET_ALLOWED_ORIGINS = [
-        'https://*.vercel.app',
-        'https://*.onrender.com',
         'https://instant-mechanic-assignment-ten.vercel.app',
         'https://instant-mechanic-assignment.vercel.app',
     ]
