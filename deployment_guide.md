@@ -36,8 +36,9 @@ Render provides free/standard Linux environments with native HTTPS and WebSocket
    - **Runtime:** `Python 3`
    - **Build Command:**
      ```bash
-     pip install -r requirements.txt && python manage.py migrate && python manage.py seed_data
+     pip install -r requirements.txt && python manage.py migrate
      ```
+     *(Run `python manage.py seed_data` once via the Render Web Shell for initial demo fixtures, or include it in your first build).*
    - **Start Command:**
      ```bash
      daphne -b 0.0.0.0 -p $PORT core.asgi:application

@@ -263,3 +263,52 @@ class BookingFilterValidationTests(TestCase):
         client = APIClient()
         response = client.get('/api/v1/bookings/', {'status': 'PENDING'})
         self.assertEqual(response.status_code, 200)
+
+
+@pytest.mark.django_db
+class DemoSimulatorCapacityTests(TestCase):
+    """P1-Simulator: Simulator must skip overloaded mechanics (active_jobs >= 4) and pick an available mechanic with capacity."""
+
+    def setUp(self):
+        self.customer = Customer.objects.create(name="Sim Customer", phone="+91 9876543299", email="sim@gmail.com")
+        self.vehicle = Vehicle.objects.create(
+            customer=self.customer, make="Honda", model="City",
+            registration_number="DL-03-CD-9999", vehicle_type="SEDAN"
+        )
+        self.service = ServiceCategory.objects.create(
+            name="Sim Service", description="Test", base_price=Decimal("2000.00")
+        )
+        # Overloaded mechanic (4 active jobs)
+        self.overloaded_mech = Mechanic.objects.create(
+            name="Overloaded Mech", phone="+91 9876543201",
+            availability_status=Mechanic.AVAILABILITY_AVAILABLE, rating=Decimal("4.85")
+        )
+        for i in range(4):
+            b = Booking.objects.create(
+                booking_number=f"BK-OVER-{i}", customer=self.customer, vehicle=self.vehicle,
+                service_category=self.service, status=Booking.STATUS_PENDING,
+                amount=Decimal("2000.00"), is_demo_scenario=True
+            )
+            BookingService.assign_mechanic(b, self.overloaded_mech)
+
+        # Free mechanic (0 active jobs)
+        self.free_mech = Mechanic.objects.create(
+            name="Free Mech", phone="+91 9876543202",
+            availability_status=Mechanic.AVAILABILITY_AVAILABLE, rating=Decimal("4.90")
+        )
+
+    def test_simulator_selects_free_mechanic_when_first_is_overloaded(self):
+        """When the first available mechanic is at capacity (4 jobs), the simulator must assign to the free mechanic."""
+        pending_booking = Booking.objects.create(
+            booking_number="BK-SIM-PENDING-01", customer=self.customer, vehicle=self.vehicle,
+            service_category=self.service, status=Booking.STATUS_PENDING,
+            amount=Decimal("2000.00"), is_demo_scenario=False
+        )
+        client = APIClient()
+        response = client.post('/api/v1/demo/simulate/')
+        self.assertEqual(response.status_code, 200)
+
+        pending_booking.refresh_from_db()
+        self.assertEqual(pending_booking.status, Booking.STATUS_ASSIGNED)
+        self.assertEqual(pending_booking.mechanic.id, self.free_mech.id, "Simulator should pick the mechanic with capacity")
+

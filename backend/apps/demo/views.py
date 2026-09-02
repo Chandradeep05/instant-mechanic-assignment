@@ -60,14 +60,25 @@ class DemoSimulateView(APIView):
         # We NEVER call transition_booking() directly for PENDING -> ASSIGNED.
         # Domain invariant: ASSIGNED implies mechanic IS NOT NULL.
         if current_status == Booking.STATUS_PENDING:
+            from django.db.models import Count, Q
+            active_statuses = [
+                Booking.STATUS_ASSIGNED,
+                Booking.STATUS_ON_THE_WAY,
+                Booking.STATUS_ARRIVED,
+                Booking.STATUS_IN_PROGRESS,
+            ]
             available_mechanic = (
-                Mechanic.objects.filter(availability_status=Mechanic.AVAILABILITY_AVAILABLE).first()
+                Mechanic.objects.filter(
+                    availability_status=Mechanic.AVAILABILITY_AVAILABLE
+                ).annotate(
+                    active_job_count=Count('bookings', filter=Q(bookings__status__in=active_statuses))
+                ).filter(active_job_count__lt=4).order_by('active_job_count', 'id').first()
             )
             if not available_mechanic:
                 return Response(
                     {
-                        "message": "Cannot advance booking: no AVAILABLE mechanic found. "
-                                   "All mechanics are OFFLINE or on BREAK."
+                        "message": "Cannot advance booking: no AVAILABLE mechanic with capacity found. "
+                                   "All available mechanics have reached max concurrent jobs (4) or are OFFLINE/BREAK."
                     },
                     status=status.HTTP_200_OK
                 )
@@ -97,6 +108,8 @@ def _create_fresh_demo_booking() -> Optional[Booking]:
     Creates a fresh PENDING booking from existing seed data for continuous simulation.
     Never recycles COMPLETED bookings to avoid bypassing the state machine.
     """
+    import uuid
+
     customer = Customer.objects.order_by('?').first()
     if not customer:
         return None
@@ -114,8 +127,7 @@ def _create_fresh_demo_booking() -> Optional[Booking]:
     price_mult = Decimal(str(round(random.uniform(0.90, 1.25), 2)))
     amount = round(service.base_price * price_mult, 2)
 
-    import time
-    booking_number = f"BK-SIM-{int(time.time() * 1000) % 1000000}"
+    booking_number = f"BK-SIM-{uuid.uuid4().hex[:8].upper()}"
 
     return Booking.objects.create(
         booking_number=booking_number,
