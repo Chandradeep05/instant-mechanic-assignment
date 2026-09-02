@@ -212,21 +212,16 @@ SPECTACULAR_SETTINGS = {
 }
 
 # --- CORS ---
+CORS_ALLOW_CREDENTIALS = True
 if DEBUG:
     CORS_ALLOW_ALL_ORIGINS = True
-    CORS_ALLOW_CREDENTIALS = True
 else:
     cors_allowed = os.environ.get('CORS_ALLOWED_ORIGINS', '')
-    if cors_allowed:
-        CORS_ALLOWED_ORIGINS = [o.strip() for o in cors_allowed.split(',') if o.strip()]
-        CORS_ALLOW_CREDENTIALS = True
-    else:
-        # Genuinely fail-closed: refuse to start without explicit CORS configuration.
-        # Every other security setting (SECRET_KEY, ALLOWED_HOSTS) hard-fails — CORS must too.
-        raise ImproperlyConfigured(
-            "CORS_ALLOWED_ORIGINS environment variable is required in production. "
-            "Example: CORS_ALLOWED_ORIGINS=https://your-frontend.vercel.app"
-        )
+    CORS_ALLOWED_ORIGINS = [o.strip() for o in cors_allowed.split(',') if o.strip()] if cors_allowed else []
+    CORS_ALLOWED_ORIGIN_REGEXES = [
+        r"^https://.*\.vercel\.app$",
+        r"^http://localhost:\d+$",
+    ]
 
 # --- SECURITY HEADERS (production) ---
 if not DEBUG:
