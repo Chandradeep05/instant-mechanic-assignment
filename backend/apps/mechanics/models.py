@@ -24,6 +24,12 @@ class Mechanic(models.Model):
 
     class Meta:
         ordering = ['name']
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(rating__gte=0) & models.Q(rating__lte=5),
+                name='mechanic_rating_between_0_and_5',
+            ),
+        ]
 
     def __str__(self):
         return f"{self.name} [{self.availability_status}]"

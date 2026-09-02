@@ -105,15 +105,8 @@ WSGI_APPLICATION = 'core.wsgi.application'
 ASGI_APPLICATION = 'core.asgi.application'
 
 # --- DATABASE ---
-# Supports SQLite (default), PostgreSQL via DATABASE_URL or POSTGRES_* env vars.
-# Decodes URL-encoded credentials and handles sslmode for Supabase/AWS RDS.
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
-}
-
+# Fail-closed in production: DATABASE_URL or POSTGRES_DB is required when DEBUG=False.
+# SQLite is permitted only when DEBUG=True or DJANGO_ALLOW_SQLITE is explicitly set.
 if os.environ.get('DATABASE_URL', '').strip():
     url = urllib.parse.urlparse(os.environ['DATABASE_URL'].strip())
     query_params = urllib.parse.parse_qs(url.query)
@@ -132,18 +125,33 @@ if os.environ.get('DATABASE_URL', '').strip():
     if ssl_mode or 'supabase' in (url.hostname or '') or 'amazonaws' in (url.hostname or ''):
         db_config['OPTIONS'] = {'sslmode': ssl_mode or 'require'}
 
-    DATABASES['default'] = db_config
+    DATABASES = {'default': db_config}
 
 elif os.environ.get('POSTGRES_DB'):
-    DATABASES['default'] = {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.environ.get('POSTGRES_DB', 'instant_mechanic'),
-        'USER': os.environ.get('POSTGRES_USER', 'postgres'),
-        'PASSWORD': os.environ.get('POSTGRES_PASSWORD', 'postgres'),
-        'HOST': os.environ.get('POSTGRES_HOST', 'localhost'),
-        'PORT': os.environ.get('POSTGRES_PORT', '5432'),
-        'CONN_MAX_AGE': 60,
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.environ.get('POSTGRES_DB', 'instant_mechanic'),
+            'USER': os.environ.get('POSTGRES_USER', 'postgres'),
+            'PASSWORD': os.environ.get('POSTGRES_PASSWORD', 'postgres'),
+            'HOST': os.environ.get('POSTGRES_HOST', 'localhost'),
+            'PORT': os.environ.get('POSTGRES_PORT', '5432'),
+            'CONN_MAX_AGE': 60,
+        }
     }
+
+elif DEBUG or os.environ.get('DJANGO_ALLOW_SQLITE', '').lower() in ('true', '1', 'yes'):
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
+else:
+    raise ImproperlyConfigured(
+        "Production database configuration is required when DEBUG=False. "
+        "Set DATABASE_URL or POSTGRES_DB, or set DJANGO_ALLOW_SQLITE=true to explicitly allow SQLite."
+    )
 
 # --- CHANNELS LAYER ---
 if os.environ.get('REDIS_URL'):
@@ -221,6 +229,19 @@ else:
     CORS_ALLOWED_ORIGINS = [
         origin.strip() for origin in _cors_origins_env.split(',') if origin.strip()
     ]
+
+# --- WEBSOCKET ORIGIN TRUST ---
+_ws_origins_env = os.environ.get('WEBSOCKET_ALLOWED_ORIGINS', '')
+if _ws_origins_env.strip():
+    WEBSOCKET_ALLOWED_ORIGINS = [
+        origin.strip() for origin in _ws_origins_env.split(',') if origin.strip()
+    ]
+elif not DEBUG:
+    # In production, default WebSocket allowed origins to CORS_ALLOWED_ORIGINS
+    # so frontend deployments (e.g. Vercel) can connect over WSS without polluting ALLOWED_HOSTS
+    WEBSOCKET_ALLOWED_ORIGINS = CORS_ALLOWED_ORIGINS
+else:
+    WEBSOCKET_ALLOWED_ORIGINS = ['*']
 
 # --- SECURITY HEADERS (production) ---
 if not DEBUG:

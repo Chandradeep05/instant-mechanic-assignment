@@ -87,7 +87,34 @@ class Booking(models.Model):
                 ),
                 name='active_status_requires_mechanic',
             ),
+            # Domain invariant: completed bookings must record completion timestamp
+            models.CheckConstraint(
+                check=(
+                    ~Q(status='COMPLETED')
+                    | Q(completed_at__isnull=False)
+                ),
+                name='completed_requires_completed_at',
+            ),
+            # Domain invariant: cancelled bookings must record cancellation timestamp
+            models.CheckConstraint(
+                check=(
+                    ~Q(status='CANCELLED')
+                    | Q(cancelled_at__isnull=False)
+                ),
+                name='cancelled_requires_cancelled_at',
+            ),
         ]
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        super().clean()
+        if self.vehicle_id and self.customer_id:
+            if self.vehicle.customer_id != self.customer_id:
+                raise ValidationError({"vehicle": "Selected vehicle does not belong to the selected customer."})
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.booking_number} - {self.status} (₹{self.amount})"

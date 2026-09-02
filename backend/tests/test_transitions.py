@@ -1,6 +1,7 @@
 import pytest
 from decimal import Decimal
 from django.test import TestCase
+from django.utils import timezone
 from apps.customers.models import Customer, Vehicle
 from apps.mechanics.models import Mechanic
 from apps.bookings.models import ServiceCategory, Booking, BookingStatusHistory
@@ -97,16 +98,18 @@ class BookingTransitionTestCase(TestCase):
         self.assertEqual(self.booking.status, Booking.STATUS_PENDING)
         self.assertEqual(self.booking.status_history.count(), 0)
 
-        # Set to COMPLETED
+        # Set to COMPLETED with completion timestamp
         self.booking.status = Booking.STATUS_COMPLETED
+        self.booking.completed_at = timezone.now()
         self.booking.save()
 
         # COMPLETED -> ON_THE_WAY is illegal
         with self.assertRaises(InvalidStateTransitionError):
             BookingService.transition_booking(self.booking, Booking.STATUS_ON_THE_WAY)
 
-        # Set to CANCELLED
+        # Set to CANCELLED with cancellation timestamp
         self.booking.status = Booking.STATUS_CANCELLED
+        self.booking.cancelled_at = timezone.now()
         self.booking.save()
 
         # CANCELLED -> ASSIGNED is illegal
@@ -139,6 +142,7 @@ class BookingTransitionTestCase(TestCase):
     def test_assign_terminal_booking_fails(self):
         """Test assigning to COMPLETED or CANCELLED booking raises BookingTerminalStateError."""
         self.booking.status = Booking.STATUS_COMPLETED
+        self.booking.completed_at = timezone.now()
         self.booking.save()
 
         with self.assertRaises(BookingTerminalStateError):

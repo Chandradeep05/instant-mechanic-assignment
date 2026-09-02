@@ -14,7 +14,8 @@ Example ALLOWED_HOSTS for production:
 import os
 from django.core.asgi import get_asgi_application
 from channels.routing import ProtocolTypeRouter, URLRouter
-from channels.security.websocket import AllowedHostsOriginValidator
+from channels.security.websocket import AllowedHostsOriginValidator, OriginValidator
+from django.conf import settings
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings')
 
@@ -22,11 +23,18 @@ django_asgi_app = get_asgi_application()
 
 import core.ws_routing  # noqa: E402
 
+ws_origins = getattr(settings, 'WEBSOCKET_ALLOWED_ORIGINS', [])
+if ws_origins and '*' not in ws_origins:
+    ws_router = OriginValidator(
+        URLRouter(core.ws_routing.websocket_urlpatterns),
+        ws_origins
+    )
+else:
+    ws_router = AllowedHostsOriginValidator(
+        URLRouter(core.ws_routing.websocket_urlpatterns)
+    )
+
 application = ProtocolTypeRouter({
     "http": django_asgi_app,
-    "websocket": AllowedHostsOriginValidator(
-        URLRouter(
-            core.ws_routing.websocket_urlpatterns
-        )
-    ),
+    "websocket": ws_router,
 })

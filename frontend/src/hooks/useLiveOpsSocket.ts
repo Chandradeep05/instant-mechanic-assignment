@@ -56,6 +56,9 @@ export function useLiveOpsSocket(options: LiveOpsSocketOptions = {}) {
         if (generationRef.current !== thisGeneration) return;
         setConnectionState('LIVE');
         retryCountRef.current = 0;
+        if (onEventRef.current) {
+          onEventRef.current('socket.reconnected', { timestamp: Date.now() });
+        }
       };
 
       ws.onmessage = (event) => {

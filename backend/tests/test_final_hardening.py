@@ -225,3 +225,76 @@ class FinalHardeningTestCase(TestCase):
         # Run seed command without --reset; must skip safely and not crash
         call_command('seed_data')
         self.assertTrue(ServiceCategory.objects.filter(id=self.service.id).exists())
+
+    def test_booking_model_clean_rejects_mismatched_vehicle_direct_orm(self):
+        """
+        RB-02 Verification:
+        Direct ORM Booking creation must reject a customer paired with someone else's vehicle.
+        """
+        from django.core.exceptions import ValidationError
+        other_customer = Customer.objects.create(
+            name="Stranger", phone="+91 9100000000", email="stranger@test.com"
+        )
+        with self.assertRaises(ValidationError):
+            Booking.objects.create(
+                booking_number="BK-MISMATCH-001",
+                customer=other_customer,
+                vehicle=self.vehicle_1,  # vehicle belongs to self.customer
+                service_category=self.service,
+                amount=Decimal("1800.00"),
+                status=Booking.STATUS_PENDING,
+            )
+
+    def test_booking_completed_requires_completed_at_db_constraint(self):
+        """
+        RB-03 Verification:
+        Database check constraint completed_requires_completed_at must reject COMPLETED with null timestamp.
+        """
+        from django.db import IntegrityError
+        with self.assertRaises(IntegrityError):
+            # Bypass model clean() via bulk_create or raw SQL / save(skip_clean)
+            Booking.objects.bulk_create([
+                Booking(
+                    booking_number="BK-CONSTRAINT-001",
+                    customer=self.customer,
+                    vehicle=self.vehicle_1,
+                    service_category=self.service,
+                    status=Booking.STATUS_COMPLETED,
+                    amount=Decimal("1800.00"),
+                    completed_at=None,
+                )
+            ])
+
+    def test_booking_cancelled_requires_cancelled_at_db_constraint(self):
+        """
+        RB-03 Verification:
+        Database check constraint cancelled_requires_cancelled_at must reject CANCELLED with null timestamp.
+        """
+        from django.db import IntegrityError
+        with self.assertRaises(IntegrityError):
+            Booking.objects.bulk_create([
+                Booking(
+                    booking_number="BK-CONSTRAINT-002",
+                    customer=self.customer,
+                    vehicle=self.vehicle_1,
+                    service_category=self.service,
+                    status=Booking.STATUS_CANCELLED,
+                    amount=Decimal("1800.00"),
+                    cancelled_at=None,
+                )
+            ])
+
+    def test_mechanic_rating_bounds_db_constraint(self):
+        """
+        M-01 Verification:
+        Database check constraint mechanic_rating_between_0_and_5 must reject rating > 5.0.
+        """
+        from django.db import IntegrityError
+        with self.assertRaises(IntegrityError):
+            Mechanic.objects.bulk_create([
+                Mechanic(
+                    name="Invalid Rating",
+                    phone="+91 9999000000",
+                    rating=Decimal("6.50"),
+                )
+            ])
