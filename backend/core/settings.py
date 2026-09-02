@@ -216,14 +216,14 @@ if DEBUG:
     CORS_ALLOW_ALL_ORIGINS = True
 else:
     cors_allowed = os.environ.get('CORS_ALLOWED_ORIGINS', '')
-    if not cors_allowed:
-        raise ImproperlyConfigured(
-            "CORS_ALLOWED_ORIGINS environment variable is required in production. "
-            "Example: CORS_ALLOWED_ORIGINS=https://your-frontend.vercel.app"
-        )
     CORS_ALLOWED_ORIGINS = [
         origin.strip() for origin in cors_allowed.split(',') if origin.strip()
-    ]
+    ] if cors_allowed else []
+
+    # Explicit whitelist: User's exact Vercel app & local dev
+    for origin in ['https://instant-mechanic-assignment-ten.vercel.app', 'http://localhost:5173']:
+        if origin not in CORS_ALLOWED_ORIGINS:
+            CORS_ALLOWED_ORIGINS.append(origin)
 
 # --- SECURITY HEADERS (production) ---
 if not DEBUG:
