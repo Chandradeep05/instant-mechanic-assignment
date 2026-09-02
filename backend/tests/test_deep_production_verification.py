@@ -479,6 +479,17 @@ class DeepProductionVerificationTestCase(TestCase):
         self.assertTrue(is_origin_allowed("https://instant-mechanic-assignment.vercel.app"))
         self.assertTrue(is_origin_allowed("https://instant-mechanic-assignment-staging-42.vercel.app"))
 
+    def test_origin_sanitizer_prepends_scheme_when_missing(self):
+        """
+        Verify that bare hostnames like 'instant-mechanic-assignment-ten.vercel.app'
+        are safely normalized with https:// scheme to prevent django-cors-headers E013 errors.
+        """
+        from core.settings import _sanitize_origin
+        self.assertEqual(_sanitize_origin("instant-mechanic-assignment-ten.vercel.app"), "https://instant-mechanic-assignment-ten.vercel.app")
+        self.assertEqual(_sanitize_origin("https://instant-mechanic-assignment-ten.vercel.app/"), "https://instant-mechanic-assignment-ten.vercel.app")
+        self.assertEqual(_sanitize_origin("http://localhost:5173/"), "http://localhost:5173")
+        self.assertEqual(_sanitize_origin(""), "")
+
     # =========================================================================
     # 7. DEMO SIMULATOR STEPWISE PROGRESSION
     # =========================================================================

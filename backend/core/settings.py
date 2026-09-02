@@ -227,6 +227,14 @@ CORS_ALLOWED_ORIGIN_REGEXES = [
     r"^http:\/\/127\.0.0\.1:\d+$",
 ]
 
+def _sanitize_origin(origin: str) -> str:
+    cleaned = origin.strip().rstrip('/')
+    if not cleaned:
+        return ''
+    if not cleaned.startswith(('http://', 'https://')):
+        cleaned = f"https://{cleaned}"
+    return cleaned
+
 if DEBUG:
     CORS_ALLOW_ALL_ORIGINS = True
 else:
@@ -238,8 +246,9 @@ else:
         ]
     else:
         CORS_ALLOWED_ORIGINS = [
-            origin.strip().rstrip('/') for origin in _cors_origins_env.split(',') if origin.strip()
+            _sanitize_origin(origin) for origin in _cors_origins_env.split(',') if origin.strip()
         ]
+        CORS_ALLOWED_ORIGINS = [o for o in CORS_ALLOWED_ORIGINS if o]
         if 'https://instant-mechanic-assignment-ten.vercel.app' not in CORS_ALLOWED_ORIGINS:
             CORS_ALLOWED_ORIGINS.append('https://instant-mechanic-assignment-ten.vercel.app')
         if 'https://instant-mechanic-assignment.vercel.app' not in CORS_ALLOWED_ORIGINS:
@@ -249,8 +258,9 @@ else:
 _ws_origins_env = os.environ.get('WEBSOCKET_ALLOWED_ORIGINS', '')
 if _ws_origins_env.strip():
     WEBSOCKET_ALLOWED_ORIGINS = [
-        origin.strip().rstrip('/') for origin in _ws_origins_env.split(',') if origin.strip()
+        _sanitize_origin(origin) for origin in _ws_origins_env.split(',') if origin.strip()
     ]
+    WEBSOCKET_ALLOWED_ORIGINS = [o for o in WEBSOCKET_ALLOWED_ORIGINS if o]
 elif not DEBUG:
     WEBSOCKET_ALLOWED_ORIGINS = [
         'https://instant-mechanic-assignment-ten.vercel.app',
