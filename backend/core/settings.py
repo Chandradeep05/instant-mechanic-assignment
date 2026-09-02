@@ -29,13 +29,26 @@ if not SECRET_KEY:
     )
 
 # --- ALLOWED HOSTS ---
-_allowed_hosts_env = os.environ.get('ALLOWED_HOSTS', '*' if DEBUG else None)
-if not _allowed_hosts_env and not DEBUG:
+_allowed_hosts_env = os.environ.get('ALLOWED_HOSTS', '*' if DEBUG else '')
+ALLOWED_HOSTS = [h.strip() for h in _allowed_hosts_env.split(',') if h.strip()] if _allowed_hosts_env else []
+
+# Auto-detect Render deployment hostname
+render_host = os.environ.get('RENDER_EXTERNAL_HOSTNAME')
+if render_host and render_host not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(render_host)
+
+# Allow all onrender.com subdomains if deployed on Render or if ALLOWED_HOSTS has wildcard
+if render_host or '.onrender.com' not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append('.onrender.com')
+
+if not ALLOWED_HOSTS and not DEBUG:
     raise ImproperlyConfigured(
         "ALLOWED_HOSTS environment variable is required in production. "
         "Example: ALLOWED_HOSTS=instant-mechanic.example.com,api.instant-mechanic.com"
     )
-ALLOWED_HOSTS = [h.strip() for h in (_allowed_hosts_env or '*').split(',') if h.strip()]
+
+if DEBUG and '*' not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append('*')
 
 # Application definition
 INSTALLED_APPS = [
