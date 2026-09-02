@@ -37,8 +37,8 @@ render_host = os.environ.get('RENDER_EXTERNAL_HOSTNAME')
 if render_host and render_host not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append(render_host)
 
-# Allow all onrender.com subdomains if deployed on Render or if ALLOWED_HOSTS has wildcard
-if render_host or '.onrender.com' not in ALLOWED_HOSTS:
+# Allow all onrender.com subdomains if not already present
+if '.onrender.com' not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append('.onrender.com')
 
 if not ALLOWED_HOSTS and not DEBUG:
@@ -212,15 +212,17 @@ SPECTACULAR_SETTINGS = {
 }
 
 # --- CORS ---
-CORS_ALLOW_CREDENTIALS = True
 if DEBUG:
     CORS_ALLOW_ALL_ORIGINS = True
 else:
     cors_allowed = os.environ.get('CORS_ALLOWED_ORIGINS', '')
-    CORS_ALLOWED_ORIGINS = [o.strip() for o in cors_allowed.split(',') if o.strip()] if cors_allowed else []
-    CORS_ALLOWED_ORIGIN_REGEXES = [
-        r"^https://.*\.vercel\.app$",
-        r"^http://localhost:\d+$",
+    if not cors_allowed:
+        raise ImproperlyConfigured(
+            "CORS_ALLOWED_ORIGINS environment variable is required in production. "
+            "Example: CORS_ALLOWED_ORIGINS=https://your-frontend.vercel.app"
+        )
+    CORS_ALLOWED_ORIGINS = [
+        origin.strip() for origin in cors_allowed.split(',') if origin.strip()
     ]
 
 # --- SECURITY HEADERS (production) ---

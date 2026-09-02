@@ -1,7 +1,7 @@
 # Production Deployment Guide — Instant Mechanic LiveOps Dashboard
 
 **Recommended Deployment Stack:**  
-- **Database:** Supabase PostgreSQL  
+- **Database:** Supabase PostgreSQL (Session Pooler)  
 - **Backend (ASGI + Channels):** Render (Web Service)  
 - **Frontend:** Vercel (React + Vite)  
 
@@ -10,13 +10,16 @@
 ## 1. Supabase PostgreSQL Setup
 
 1. Create a project at [supabase.com](https://supabase.com).
-2. Navigate to **Project Settings** → **Database** → **Connection string** → **URI**.
-3. Copy your URI connection string. It will follow this format:
+2. Navigate to **Project Settings** → **Database** → Scroll to **Connection string**.
+3. Select the **"Connection Pooling"** tab (Mode: Session, Port: 5432 or 6543).
+4. Copy your Session Pooler URI connection string. It will follow this format:
    ```env
-   DATABASE_URL=postgresql://postgres:<YOUR_PASSWORD>@db.<YOUR_PROJECT_REF>.supabase.co:5432/postgres?sslmode=require
+   DATABASE_URL=postgresql://postgres.<PROJECT_REF>:<YOUR_PASSWORD>@aws-0-<REGION>.pooler.supabase.com:5432/postgres?sslmode=require
    ```
 
-> **Note on Special Characters in Passwords:** If your database password contains special characters (like `@`, `#`, `$`, `%`), make sure to URL-encode them in `DATABASE_URL` (e.g., `@` becomes `%40`). Django's database parser will automatically decode it upon connection.
+> **Important (IPv4 vs IPv6):** Render is an IPv4-only hosting environment. You must use Supabase's **Session Pooler** endpoint (`pooler.supabase.com`), not the Direct Connection endpoint (`db.<ref>.supabase.co`), which resolves to IPv6 only.
+
+> **Special Characters in Passwords:** If your database password contains special characters (like `@`, `#`, `$`, `%`), make sure to URL-encode them in `DATABASE_URL` (e.g., `@` becomes `%40`). Django's database parser will automatically decode it upon connection.
 
 ---
 
@@ -38,7 +41,7 @@ Render provides free/standard Linux environments with native HTTPS and WebSocket
      ```bash
      pip install -r requirements.txt && python manage.py migrate
      ```
-     *(Run `python manage.py seed_data` once via the Render Web Shell for initial demo fixtures, or include it in your first build).*
+     *(Initial demo data: run `python manage.py seed_data` once via the Render Web Shell).*
    - **Start Command:**
      ```bash
      daphne -b 0.0.0.0 -p $PORT core.asgi:application
@@ -51,7 +54,7 @@ Render provides free/standard Linux environments with native HTTPS and WebSocket
 | `DEBUG` | `False` | Production fail-closed mode |
 | `DJANGO_SECRET_KEY` | *(Generate a 50+ char random string)* | E.g. `python -c "import secrets; print(secrets.token_hex(50))"` |
 | `ALLOWED_HOSTS` | `<YOUR_RENDER_URL_WITHOUT_HTTPS>,<YOUR_VERCEL_URL_WITHOUT_HTTPS>` | E.g. `instant-mechanic-api.onrender.com,instant-mechanic.vercel.app` |
-| `DATABASE_URL` | `postgresql://postgres:<PASSWORD>@db.<PROJECT_REF>.supabase.co:5432/postgres?sslmode=require` | Your Supabase connection string |
+| `DATABASE_URL` | `postgresql://postgres.<PROJECT_REF>:<PASSWORD>@aws-0-<REGION>.pooler.supabase.com:5432/postgres?sslmode=require` | Your Supabase Session Pooler connection string |
 | `CORS_ALLOWED_ORIGINS` | `https://<YOUR_VERCEL_APP_URL>` | E.g. `https://instant-mechanic.vercel.app` |
 
 5. Click **Create Web Service**.
@@ -79,7 +82,7 @@ Render provides free/standard Linux environments with native HTTPS and WebSocket
 | `VITE_WS_URL` | `wss://<YOUR_RENDER_APP>.onrender.com/ws/operations/` | Render backend WebSocket endpoint (`wss://` for secure WS) |
 
 5. Click **Deploy**.
-6. Once deployed, copy your Vercel URL (e.g., `https://instant-mechanic.vercel.app`) and ensure it matches the `CORS_ALLOWED_ORIGINS` and `ALLOWED_HOSTS` in your Render backend settings.
+6. Once deployed, copy your Vercel URL (e.g., `https://instant-mechanic.vercel.app`) and ensure it is listed in `CORS_ALLOWED_ORIGINS` and `ALLOWED_HOSTS` in your Render backend settings.
 
 ---
 
@@ -87,7 +90,8 @@ Render provides free/standard Linux environments with native HTTPS and WebSocket
 
 Once both services are deployed:
 
-- [x] **Database Migration & Seed:** Automatically executed during Render build (`python manage.py migrate && python manage.py seed_data`).
+- [x] **Database Migration:** Automatically executed during Render build.
+- [x] **Initial Demo Data:** Seeded once using the Render Shell: `python manage.py seed_data`.
 - [x] **Dashboard Overview:** KPI cards load with revenue in ₹ and active operational metrics.
 - [x] **Requires Attention Panel:** Headline CRITICAL/HIGH alerts show correct ₹ prices consistent with the service catalog.
 - [x] **WebSocket Live Stream:** Top-right connection indicator shows `LIVE` (green) over `wss://`.
