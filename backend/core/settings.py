@@ -121,7 +121,7 @@ if os.environ.get('DATABASE_URL', '').strip():
         'PASSWORD': urllib.parse.unquote(url.password or ''),
         'HOST': url.hostname or 'localhost',
         'PORT': url.port or 5432,
-        'CONN_MAX_AGE': 60,
+        'CONN_MAX_AGE': int(os.environ.get('DB_CONN_MAX_AGE', 0)),
     }
 
     ssl_mode = query_params.get('sslmode', [''])[0]
@@ -139,7 +139,7 @@ elif os.environ.get('POSTGRES_DB'):
             'PASSWORD': os.environ.get('POSTGRES_PASSWORD', 'postgres'),
             'HOST': os.environ.get('POSTGRES_HOST', 'localhost'),
             'PORT': os.environ.get('POSTGRES_PORT', '5432'),
-            'CONN_MAX_AGE': 60,
+            'CONN_MAX_AGE': int(os.environ.get('DB_CONN_MAX_AGE', 0)),
         }
     }
 
@@ -223,8 +223,6 @@ SPECTACULAR_SETTINGS = {
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGIN_REGEXES = [
     r"^https:\/\/instant-mechanic-assignment(-[a-z0-9-]+)?\.vercel\.app$",
-    r"^http:\/\/localhost:\d+$",
-    r"^http:\/\/127\.0.0\.1:\d+$",
 ]
 
 def _sanitize_origin(origin: str) -> str:
@@ -237,6 +235,10 @@ def _sanitize_origin(origin: str) -> str:
 
 if DEBUG:
     CORS_ALLOW_ALL_ORIGINS = True
+    CORS_ALLOWED_ORIGIN_REGEXES.extend([
+        r"^http:\/\/localhost:\d+$",
+        r"^http:\/\/127\.0.0\.1:\d+$",
+    ])
 else:
     _cors_origins_env = os.environ.get('CORS_ALLOWED_ORIGINS', '')
     if not _cors_origins_env.strip():
@@ -266,9 +268,6 @@ elif not DEBUG:
         'https://instant-mechanic-assignment-ten.vercel.app',
         'https://instant-mechanic-assignment.vercel.app',
     ]
-    for origin in CORS_ALLOWED_ORIGINS:
-        if origin not in WEBSOCKET_ALLOWED_ORIGINS:
-            WEBSOCKET_ALLOWED_ORIGINS.append(origin)
 else:
     WEBSOCKET_ALLOWED_ORIGINS = ['*']
 

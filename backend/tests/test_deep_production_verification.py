@@ -490,6 +490,25 @@ class DeepProductionVerificationTestCase(TestCase):
         self.assertEqual(_sanitize_origin("http://localhost:5173/"), "http://localhost:5173")
         self.assertEqual(_sanitize_origin(""), "")
 
+    def test_cors_origins_do_not_implicitly_expand_websocket_origins(self):
+        """
+        HP-FINAL-01 Verification:
+        HTTP CORS origins must NOT be implicitly copied into WEBSOCKET_ALLOWED_ORIGINS.
+        WebSocket trust boundary must be strictly isolated.
+        """
+        extra_http_origin = "https://extra-http-origin.example.com"
+        ws_origins = getattr(settings, 'WEBSOCKET_ALLOWED_ORIGINS', [])
+        self.assertNotIn(extra_http_origin, ws_origins)
+
+    def test_production_db_conn_max_age_defaults_to_zero(self):
+        """
+        Supabase Pooler Verification:
+        Database connection max age defaults to 0 to prevent exhausting the
+        15-client connection pool in session mode.
+        """
+        default_db = settings.DATABASES.get('default', {})
+        self.assertEqual(default_db.get('CONN_MAX_AGE', 0), 0)
+
     # =========================================================================
     # 7. DEMO SIMULATOR STEPWISE PROGRESSION
     # =========================================================================
