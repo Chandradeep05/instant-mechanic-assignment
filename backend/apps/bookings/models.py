@@ -49,7 +49,6 @@ class Booking(models.Model):
         db_index=True
     )
     amount = models.DecimalField(max_digits=10, decimal_places=2)
-    version = models.PositiveIntegerField(default=0)
 
     # Protect deliberate live attention scenario items from random simulation
     is_demo_scenario = models.BooleanField(default=False, db_index=True)
@@ -135,15 +134,3 @@ class BookingStatusHistory(models.Model):
 
     def __str__(self):
         return f"{self.booking.booking_number}: {self.previous_status} -> {self.new_status} at {self.changed_at}"
-
-
-from django.db.models.signals import pre_save
-from django.dispatch import receiver
-
-
-@receiver(pre_save, sender=Booking)
-def enforce_booking_invariants_signal(sender, instance, **kwargs):
-    if instance.vehicle_id and instance.customer_id:
-        if instance.vehicle.customer_id != instance.customer_id:
-            from django.core.exceptions import ValidationError
-            raise ValidationError("Booking customer_id must match vehicle owner.")

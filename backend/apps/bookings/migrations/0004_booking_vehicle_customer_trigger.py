@@ -1,25 +1,24 @@
 from django.db import migrations
 
 TRIGGER_SQL = """
-DO $$
+CREATE OR REPLACE FUNCTION validate_booking_vehicle_customer()
+RETURNS trigger AS $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'validate_booking_vehicle_customer') THEN
-        CREATE OR REPLACE FUNCTION validate_booking_vehicle_customer() RETURNS trigger AS $func$
-        BEGIN
-            IF NOT EXISTS (
-                SELECT 1 FROM customers_vehicle
-                WHERE id = NEW.vehicle_id AND customer_id = NEW.customer_id
-            ) THEN
-                RAISE EXCEPTION 'Booking customer_id must match vehicle owner';
-            END IF;
-            RETURN NEW;
-        END;
-        $func$ LANGUAGE plpgsql;
+    IF NOT EXISTS (
+        SELECT 1
+        FROM customers_vehicle
+        WHERE id = NEW.vehicle_id
+          AND customer_id = NEW.customer_id
+    ) THEN
+        RAISE EXCEPTION 'Booking customer_id must match vehicle owner';
     END IF;
-END
-$$;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS booking_vehicle_customer_guard ON bookings_booking;
+
 CREATE TRIGGER booking_vehicle_customer_guard
 BEFORE INSERT OR UPDATE OF customer_id, vehicle_id
 ON bookings_booking
@@ -42,7 +41,7 @@ def revert_trigger_if_postgres(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ('bookings', '0004_booking_version'),
+        ('bookings', '0003_booking_completed_requires_completed_at_and_more'),
     ]
 
     operations = [

@@ -38,6 +38,9 @@ render_host = os.environ.get('RENDER_EXTERNAL_HOSTNAME')
 if render_host and render_host not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append(render_host)
 
+if 'instant-mechanic-assignment-jxdn.onrender.com' not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append('instant-mechanic-assignment-jxdn.onrender.com')
+
 if not ALLOWED_HOSTS and not DEBUG:
     raise ImproperlyConfigured(
         "ALLOWED_HOSTS environment variable is required in production. "
@@ -217,29 +220,48 @@ SPECTACULAR_SETTINGS = {
 }
 
 # --- CORS ---
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https:\/\/.*\.vercel\.app$",
+    r"^https:\/\/.*\.onrender\.com$",
+    r"^http:\/\/localhost:\d+$",
+    r"^http:\/\/127\.0.0\.1:\d+$",
+]
+
 if DEBUG:
     CORS_ALLOW_ALL_ORIGINS = True
 else:
     _cors_origins_env = os.environ.get('CORS_ALLOWED_ORIGINS', '')
     if not _cors_origins_env.strip():
-        raise ImproperlyConfigured(
-            "CORS_ALLOWED_ORIGINS environment variable is required in production. "
-            "Example: CORS_ALLOWED_ORIGINS=https://your-app.vercel.app"
-        )
-    CORS_ALLOWED_ORIGINS = [
-        origin.strip() for origin in _cors_origins_env.split(',') if origin.strip()
-    ]
+        CORS_ALLOWED_ORIGINS = [
+            'https://instant-mechanic-assignment-ten.vercel.app',
+            'https://instant-mechanic-assignment.vercel.app',
+        ]
+    else:
+        CORS_ALLOWED_ORIGINS = [
+            origin.strip().rstrip('/') for origin in _cors_origins_env.split(',') if origin.strip()
+        ]
+        if 'https://instant-mechanic-assignment-ten.vercel.app' not in CORS_ALLOWED_ORIGINS:
+            CORS_ALLOWED_ORIGINS.append('https://instant-mechanic-assignment-ten.vercel.app')
+        if 'https://instant-mechanic-assignment.vercel.app' not in CORS_ALLOWED_ORIGINS:
+            CORS_ALLOWED_ORIGINS.append('https://instant-mechanic-assignment.vercel.app')
 
 # --- WEBSOCKET ORIGIN TRUST ---
 _ws_origins_env = os.environ.get('WEBSOCKET_ALLOWED_ORIGINS', '')
 if _ws_origins_env.strip():
     WEBSOCKET_ALLOWED_ORIGINS = [
-        origin.strip() for origin in _ws_origins_env.split(',') if origin.strip()
+        origin.strip().rstrip('/') for origin in _ws_origins_env.split(',') if origin.strip()
     ]
 elif not DEBUG:
-    # In production, default WebSocket allowed origins to CORS_ALLOWED_ORIGINS
-    # so frontend deployments (e.g. Vercel) can connect over WSS without polluting ALLOWED_HOSTS
-    WEBSOCKET_ALLOWED_ORIGINS = CORS_ALLOWED_ORIGINS
+    WEBSOCKET_ALLOWED_ORIGINS = [
+        'https://*.vercel.app',
+        'https://*.onrender.com',
+        'https://instant-mechanic-assignment-ten.vercel.app',
+        'https://instant-mechanic-assignment.vercel.app',
+    ]
+    for origin in CORS_ALLOWED_ORIGINS:
+        if origin not in WEBSOCKET_ALLOWED_ORIGINS:
+            WEBSOCKET_ALLOWED_ORIGINS.append(origin)
 else:
     WEBSOCKET_ALLOWED_ORIGINS = ['*']
 
