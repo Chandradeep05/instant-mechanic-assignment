@@ -95,20 +95,30 @@ export const BookingsTable: React.FC<BookingsTableProps> = ({
 
   const handleExportCSV = () => {
     if (!bookings.length) return;
+
+    const escapeCSVField = (value: unknown): string => {
+      const str = String(value ?? '');
+      // Prefix formula-starting chars to prevent spreadsheet injection
+      const safe = /^[=+\-@]/.test(str) ? `'${str}` : str;
+      // Escape embedded double-quotes by doubling them, then wrap the whole field
+      return `"${safe.replace(/"/g, '""')}"`;
+    };
+
     const headers = ['Booking Number', 'Status', 'Amount', 'Customer', 'Phone', 'Vehicle', 'Service', 'Mechanic', 'Created At'];
     const rows = bookings.map((b) => [
       b.booking_number,
       b.status,
       b.amount,
-      `"${b.customer_name}"`,
-      `"${b.customer_phone}"`,
-      `"${b.vehicle_info}"`,
-      `"${b.service_name}"`,
-      `"${b.mechanic_name || 'Unassigned'}"`,
+      b.customer_name,
+      b.customer_phone,
+      b.vehicle_info,
+      b.service_name,
+      b.mechanic_name || 'Unassigned',
       b.created_at,
-    ]);
+    ].map(escapeCSVField));
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
+    const csvContent = 'data:text/csv;charset=utf-8,'
+      + [headers.map(escapeCSVField).join(','), ...rows.map((e) => e.join(','))].join('\n');
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);

@@ -32,14 +32,11 @@ if not SECRET_KEY:
 _allowed_hosts_env = os.environ.get('ALLOWED_HOSTS', '*' if DEBUG else '')
 ALLOWED_HOSTS = [h.strip() for h in _allowed_hosts_env.split(',') if h.strip()] if _allowed_hosts_env else []
 
-# Auto-detect Render deployment hostname
+# Auto-detect Render deployment hostname and append it — but no wildcard subdomain fallback.
+# A wildcard '.onrender.com' would bypass the fail-closed ALLOWED_HOSTS check in production.
 render_host = os.environ.get('RENDER_EXTERNAL_HOSTNAME')
 if render_host and render_host not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append(render_host)
-
-# Allow all onrender.com subdomains if not already present
-if '.onrender.com' not in ALLOWED_HOSTS:
-    ALLOWED_HOSTS.append('.onrender.com')
 
 if not ALLOWED_HOSTS and not DEBUG:
     raise ImproperlyConfigured(
@@ -215,15 +212,15 @@ SPECTACULAR_SETTINGS = {
 if DEBUG:
     CORS_ALLOW_ALL_ORIGINS = True
 else:
-    cors_allowed = os.environ.get('CORS_ALLOWED_ORIGINS', '')
+    _cors_origins_env = os.environ.get('CORS_ALLOWED_ORIGINS', '')
+    if not _cors_origins_env.strip():
+        raise ImproperlyConfigured(
+            "CORS_ALLOWED_ORIGINS environment variable is required in production. "
+            "Example: CORS_ALLOWED_ORIGINS=https://your-app.vercel.app"
+        )
     CORS_ALLOWED_ORIGINS = [
-        origin.strip() for origin in cors_allowed.split(',') if origin.strip()
-    ] if cors_allowed else []
-
-    # Explicit whitelist: User's exact Vercel app & local dev
-    for origin in ['https://instant-mechanic-assignment-ten.vercel.app', 'http://localhost:5173']:
-        if origin not in CORS_ALLOWED_ORIGINS:
-            CORS_ALLOWED_ORIGINS.append(origin)
+        origin.strip() for origin in _cors_origins_env.split(',') if origin.strip()
+    ]
 
 # --- SECURITY HEADERS (production) ---
 if not DEBUG:

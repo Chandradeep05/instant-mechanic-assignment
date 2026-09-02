@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from './api/client';
 import { OverviewKPIs, AttentionItem } from './types';
 import { useLiveOpsSocket } from './hooks/useLiveOpsSocket';
@@ -25,6 +25,10 @@ export function App() {
   const [isSimulating, setIsSimulating] = useState(false);
   const [isSimulatingAction, setIsSimulatingAction] = useState(false);
   const [liveNotification, setLiveNotification] = useState<{ title: string; subtitle: string } | null>(null);
+
+  // Guard against overlapping simulateDemoActivity() calls from both
+  // the auto-interval and the manual button.
+  const simulationInFlight = useRef(false);
 
   // Fetch overview data
   const fetchOverviewData = useCallback(async () => {
@@ -74,12 +78,15 @@ export function App() {
     let interval: number | undefined;
     if (isSimulating) {
       interval = window.setInterval(async () => {
+        if (simulationInFlight.current) return;  // skip if prior call still in-flight
         try {
+          simulationInFlight.current = true;
           setIsSimulatingAction(true);
           await api.simulateDemoActivity();
         } catch (err) {
           console.error('Simulate demo event error:', err);
         } finally {
+          simulationInFlight.current = false;
           setIsSimulatingAction(false);
         }
       }, 15000);
@@ -91,7 +98,9 @@ export function App() {
 
   // Manual simulate button click
   const handleManualSimulate = async () => {
+    if (simulationInFlight.current) return;  // block if auto-interval call is in-flight
     try {
+      simulationInFlight.current = true;
       setIsSimulatingAction(true);
       const res = await api.simulateDemoActivity();
       setLiveNotification({
@@ -102,6 +111,7 @@ export function App() {
     } catch (err: any) {
       console.error('Simulate manual event error:', err);
     } finally {
+      simulationInFlight.current = false;
       setIsSimulatingAction(false);
     }
   };

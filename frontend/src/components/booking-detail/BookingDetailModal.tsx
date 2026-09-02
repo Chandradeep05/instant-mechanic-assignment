@@ -285,7 +285,7 @@ export const BookingDetailModal: React.FC<BookingDetailModalProps> = ({
                           >
                             <option value="">Select Mechanic...</option>
                             {mechanics
-                              .filter((m) => m.availability_status !== 'OFFLINE')
+                              .filter((m) => m.availability_status === 'AVAILABLE' && m.active_jobs_count < 4)
                               .map((m) => (
                                 <option key={m.id} value={m.id}>
                                   {m.name} ({m.operational_status} • {m.active_jobs_count} jobs)

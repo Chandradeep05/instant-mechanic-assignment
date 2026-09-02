@@ -91,10 +91,16 @@ class BookingService:
         now = timezone.now()
 
         with transaction.atomic():
-            # Acquire row lock to prevent concurrent transition race conditions
-            locked_booking = Booking.objects.select_for_update().select_related(
+            # Acquire row lock to prevent concurrent transition race conditions.
+            # select_related is intentionally excluded: PostgreSQL raises
+            # "FOR UPDATE cannot be applied to the nullable side of an outer join"
+            # when mechanic (nullable FK) is included in select_for_update().
+            locked_booking = Booking.objects.select_for_update().get(id=booking.id)
+            # Populate FK fields via a separate non-locking fetch so the rest of
+            # the method can access booking.customer, booking.mechanic, etc.
+            locked_booking = Booking.objects.select_related(
                 'customer', 'vehicle', 'mechanic', 'service_category'
-            ).get(id=booking.id)
+            ).get(id=locked_booking.id)
 
             allowed = ALLOWED_TRANSITIONS.get(locked_booking.status, [])
             if new_status not in allowed:
@@ -164,9 +170,11 @@ class BookingService:
         now = timezone.now()
 
         with transaction.atomic():
-            locked_booking = Booking.objects.select_for_update().select_related(
+            # Lock the booking row only — same reason as transition_booking.
+            locked_booking = Booking.objects.select_for_update().get(id=booking.id)
+            locked_booking = Booking.objects.select_related(
                 'customer', 'vehicle', 'mechanic', 'service_category'
-            ).get(id=booking.id)
+            ).get(id=locked_booking.id)
 
             # Terminal states reject assignment
             if locked_booking.status in [Booking.STATUS_COMPLETED, Booking.STATUS_CANCELLED]:

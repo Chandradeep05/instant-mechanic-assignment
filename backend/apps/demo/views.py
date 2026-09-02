@@ -110,15 +110,12 @@ def _create_fresh_demo_booking() -> Optional[Booking]:
     """
     import uuid
 
-    customer = Customer.objects.order_by('?').first()
-    if not customer:
+    # Vehicle-first: guarantees the booking always pairs a customer with their own vehicle.
+    # Random customer-first with fallback could pair customer A with vehicle owned by customer B.
+    vehicle = Vehicle.objects.select_related('customer').order_by('?').first()
+    if not vehicle or not vehicle.customer_id:
         return None
-
-    vehicle = Vehicle.objects.filter(customer=customer).first()
-    if not vehicle:
-        vehicle = Vehicle.objects.order_by('?').first()
-    if not vehicle:
-        return None
+    customer = vehicle.customer
 
     service = ServiceCategory.objects.order_by('?').first()
     if not service:

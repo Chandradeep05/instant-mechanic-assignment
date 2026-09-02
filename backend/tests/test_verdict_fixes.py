@@ -312,3 +312,48 @@ class DemoSimulatorCapacityTests(TestCase):
         self.assertEqual(pending_booking.status, Booking.STATUS_ASSIGNED)
         self.assertEqual(pending_booking.mechanic.id, self.free_mech.id, "Simulator should pick the mechanic with capacity")
 
+
+@pytest.mark.django_db
+class SurgicalRemediationTests(TestCase):
+    """Focused regression tests for the latest surgical remediation fixes."""
+
+    def setUp(self):
+        self.customer = Customer.objects.create(name="Customer A", phone="+91 9111111111", email="ca@gmail.com")
+        self.vehicle = Vehicle.objects.create(
+            customer=self.customer, make="Hyundai", model="Creta",
+            registration_number="MH-02-XY-5678", vehicle_type="SUV"
+        )
+        self.service = ServiceCategory.objects.create(
+            name="Periodic Maintenance", description="Full service", base_price=Decimal("3500.00")
+        )
+        self.mechanic = Mechanic.objects.create(
+            name="Suresh Patel", phone="+91 9222222222",
+            availability_status=Mechanic.AVAILABILITY_AVAILABLE, rating=Decimal("4.80")
+        )
+
+    def test_demo_booking_pairs_customer_with_own_vehicle(self):
+        """P1: _create_fresh_demo_booking() must pair the booking customer with the vehicle's owner."""
+        from apps.demo.views import _create_fresh_demo_booking
+        booking = _create_fresh_demo_booking()
+        self.assertIsNotNone(booking)
+        self.assertEqual(booking.customer_id, booking.vehicle.customer_id,
+                         "Demo booking customer must match vehicle's actual owner")
+
+    def test_transition_and_assign_locking_behavior(self):
+        """P0: Ensure assign_mechanic and transition_booking work cleanly with the updated row-locking query."""
+        booking = Booking.objects.create(
+            booking_number="BK-SURG-01", customer=self.customer, vehicle=self.vehicle,
+            service_category=self.service, status=Booking.STATUS_PENDING,
+            amount=Decimal("3500.00"), mechanic=None
+        )
+        # assign_mechanic row lock test
+        updated = BookingService.assign_mechanic(booking, self.mechanic)
+        self.assertEqual(updated.status, Booking.STATUS_ASSIGNED)
+        self.assertEqual(updated.mechanic_id, self.mechanic.id)
+
+        # transition_booking row lock test
+        transitioned = BookingService.transition_booking(updated, Booking.STATUS_ON_THE_WAY)
+        self.assertEqual(transitioned.status, Booking.STATUS_ON_THE_WAY)
+        self.assertIsNotNone(transitioned.started_at)
+
+

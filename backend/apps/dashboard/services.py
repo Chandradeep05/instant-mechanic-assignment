@@ -128,7 +128,8 @@ class DashboardService:
         All time calculations use IST (Asia/Kolkata) via Django's USE_TZ=True + TIME_ZONE setting.
         """
         now = timezone.now()
-        start_of_today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        local_now = timezone.localtime(now)
+        start_of_today = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
         start_of_yesterday = start_of_today - timedelta(days=1)
 
         # Bookings counts
@@ -246,17 +247,18 @@ class DashboardService:
             )
 
         now = timezone.now()
+        local_now = timezone.localtime(now)
 
         if range_param == "24h":
             start_time = now - timedelta(hours=24)
             buckets = {}
             for i in range(23, -1, -1):
-                h_time = now - timedelta(hours=i)
+                h_time = timezone.localtime(now - timedelta(hours=i))
                 label = h_time.strftime('%H:00')
                 buckets[label] = {"timestamp": label, "bookings": 0, "completed": 0, "cancelled": 0}
 
             for created, status in Booking.objects.filter(created_at__gte=start_time).values_list('created_at', 'status'):
-                label = created.strftime('%H:00')
+                label = timezone.localtime(created).strftime('%H:00')
                 if label in buckets:
                     buckets[label]["bookings"] += 1
                     if status == Booking.STATUS_COMPLETED:
@@ -265,15 +267,16 @@ class DashboardService:
                         buckets[label]["cancelled"] += 1
         else:
             days = 30 if range_param == "30d" else 7
-            start_time = (now - timedelta(days=days)).replace(hour=0, minute=0, second=0, microsecond=0)
+            local_today = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+            start_time = local_today - timedelta(days=days)
             buckets = {}
             for i in range(days - 1, -1, -1):
-                d_time = (now - timedelta(days=i)).replace(hour=0, minute=0, second=0, microsecond=0)
+                d_time = local_today - timedelta(days=i)
                 label = d_time.strftime('%b %d')
                 buckets[label] = {"timestamp": label, "bookings": 0, "completed": 0, "cancelled": 0}
 
             for created, status in Booking.objects.filter(created_at__gte=start_time).values_list('created_at', 'status'):
-                label = created.strftime('%b %d')
+                label = timezone.localtime(created).strftime('%b %d')
                 if label in buckets:
                     buckets[label]["bookings"] += 1
                     if status == Booking.STATUS_COMPLETED:
@@ -294,12 +297,14 @@ class DashboardService:
             )
 
         now = timezone.now()
+        local_now = timezone.localtime(now)
         days = 30 if range_param == "30d" else 7
-        start_time = (now - timedelta(days=days)).replace(hour=0, minute=0, second=0, microsecond=0)
+        local_today = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+        start_time = local_today - timedelta(days=days)
 
         buckets = {}
         for i in range(days - 1, -1, -1):
-            d_time = (now - timedelta(days=i)).replace(hour=0, minute=0, second=0, microsecond=0)
+            d_time = local_today - timedelta(days=i)
             label = d_time.strftime('%b %d')
             buckets[label] = {"timestamp": label, "revenue": 0.0}
 
@@ -308,7 +313,7 @@ class DashboardService:
             completed_at__gte=start_time
         ).values_list('completed_at', 'amount'):
             if completed:
-                label = completed.strftime('%b %d')
+                label = timezone.localtime(completed).strftime('%b %d')
                 if label in buckets:
                     buckets[label]["revenue"] = round(buckets[label]["revenue"] + float(amount or 0.0), 2)
 
